@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TS Field Copier</title>
+    <!--  (c) 2015,2016 CA Technologies.  All Rights Reserved. -->
+    <!--  Build Date: Sat Mar 26 2016 15:42:10 GMT-0700 (PDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Sat Mar 26 2016 15:42:10 GMT-0700 (PDT)";
+        var CHECKSUM = 8661432983;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Rally.ui.dialog.Dialog',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+    title: "Build Information",
+    
+    defaults: { padding: 5, margin: 5 },
+
+    closable: true,
+     
+    draggable: true,
+
+    autoShow: true,
+   
+    width: 350, 
+    
+    initComponent: function() {
+        var id = Ext.id(this);
+        this.title =  "<span class='icon-help'> </span>" + this.title;
+        this.callParent(arguments);
+    },
+    
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    
+    _checkChecksum: function(container) {
+        var deferred = Ext.create('Deft.Deferred');
+        console.log("_checkChecksum", container);
+        var me = this;
+        
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        deferred.resolve(false);
+                        return;
+                    }
+                }
+                deferred.resolve(true);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    afterRender: function() {
+        var app = Rally.getApp();
+        
+        if (! app.isExternal() ) {
+                
+            this._checkChecksum(app).then({
+                scope: this,
+                success: function(result){
+                    if ( !result ) {
+                        this.addDocked({
+                            xtype:'container',
+                            cls: 'build-info',
+                            padding: 2,
+                            html:'<span class="icon-warning"> </span>Checksums do not match'
+                        });
+                    }
+                },
+                failure: function(msg){
+                    console.log("oops:",msg);
+                }
+            });
+        } else {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                html:'... Running externally'
+            });
+        }
+        this.callParent(arguments);
+    },
+    
+    beforeRender: function() {
+        var me = this;
+        this.callParent(arguments);
+
+        if (this.informationHtml) {
+            this.addDocked({
+                xtype: 'component',
+                componentCls: 'intro-panel',
+                padding: 2,
+                html: this.informationHtml
+            });
+        }
+        
+        this.addDocked({
+            xtype:'container',
+            cls: 'build-info',
+            padding: 2,
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('Rally.ui.combobox.PortfolioItemTypeComboBox', {
+
+    extend: 'Rally.ui.combobox.ComboBox',
+    alias: 'widget.tsrecordtypecombobox',
+
+    preferenceName: 'tsTypeCombo',
+
+    config: {
+        
+        typeFilter: [
+            {
+                property: 'Parent.Name',
+                operator: '=',
+                value: 'Portfolio Item'
+            },
+            {
+                property: 'Creatable',
+                operator: '=',
+                value: 'true'
+            }
+        ],
+        
+        typeSorter: [{
+            property: 'Ordinal',
+            direction: 'Desc'
+        }]
+    },
+    
+    constructor: function(config) {
+        if ( Ext.isEmpty(config.typeFilter) || config.typeFilter == [] || config.typeFilter == {} ) {
+            config.typeFilter = [{ property:'ObjectID', operator: '>', value: 0 }];
+        }
+        if ( Ext.isObject( config.typeFilter ) ) {
+            config.typeFilter = [config.typeFilter];
+        }
+        
+        
+        var defaultConfig = {
+            defaultSelectionPosition: 'last',
+            editable: false,
+            fieldLabel: 'Type:',
+            labelWidth: 30,
+            context: Rally.environment.getContext(),
+            storeConfig: {
+                autoLoad: false,
+                remoteFilter: true,
+                model: Ext.identityFn('TypeDefinition'),
+                sorters: config.typeSorter,
+                filters: config.typeFilter
+            }
+        };
+
+        if (config.storeConfig) {
+            delete config.storeConfig.autoLoad;
+
+            if (config.storeConfig.additionalFilters) {
+                defaultConfig.storeConfig.filters = defaultConfig.storeConfig.filters.concat(config.storeConfig.additionalFilters);
+            }
+        }
+
+        this.callParent([Ext.Object.merge(defaultConfig, config)]);
+    },
+
+    initComponent: function() {
+        this.callParent();
+
+        Deft.Promise.all([this.getPreference(), this._loadStore()]).then({
+            success: function (results) {
+                var pref = results[0];
+                if (pref && this._isPrefValueInStore(pref)) {
+                    this.setValue(pref);
+                }
+                this.on('change', this._onValueChange, this);
+                this.onReady({ preferencesLoaded: true, record: this.getRecord() });
+            },
+            scope: this
+        });
+    },
+
+    onReady: function (options) {
+        options = options || {};
+
+        // Only call the base onReady (which fires the 'ready' event, when both the store and preferences have loaded
+        if (options.preferencesLoaded) {
+            this.fireEvent('select', options.record);
+            this.callParent(arguments);
+        }
+    },
+
+    getSelectedType: function () {
+        return this.getTypeFromRef(this.getValue());
+    },
+
+    getTypeFromRef: function (typeRef) {
+        return this.getStore().findRecord('_ref', typeRef);
+    },
+
+    getTypeWithOrdinal: function(ordinal) {
+        return this.getStore().findRecord("Ordinal", ordinal);
+    },
+
+    getAllTypeNames: function () {
+        return _.map(this.getStore().getRecords(), function (type) { return type.get('TypePath'); });
+    },
+
+    _onValueChange: function(field, newValue) {
+        this.savePreference(newValue);
+    },
+
+    _loadStore: function () {
+        var deferred = new Deft.Deferred();
+
+        this.store.load({
+            callback: function (records, operation, success) {
+                if (success) {
+                    deferred.resolve();
+                } else {
+                    deferred.reject();
+                }
+            },
+            scope: this
+        });
+
+        return deferred.promise;
+    },
+
+    getPreference: function() {
+        var deferred = new Deft.Deferred();
+
+        Rally.data.PreferenceManager.load(Ext.apply(this._getPreferenceConfig(), {
+            success: function(prefs) {
+                deferred.resolve(prefs[this._getPreferenceName()]);
+            },
+            scope: this
+        }));
+
+        return deferred.promise;
+    },
+
+    savePreference: function(value) {
+        var settings = {};
+        settings[this._getPreferenceName()] = value;
+
+        Rally.data.PreferenceManager.update(Ext.apply(this._getPreferenceConfig(), {
+            settings: settings
+        }));
+    },
+
+    _getPreferenceConfig: function () {
+        var config = {
+            filterByUser: true,
+            filterByName: this._getPreferenceName()
+        };
+
+        if (this.context.get && this.context.get('appID')) {
+            config.appID = this.context.get('appID');
+        }
+
+        return config;
+    },
+
+    _getPreferenceName: function() {
+        return this.preferenceName + '-' + this.context.getWorkspace().ObjectID;
+    },
+
+    _isPrefValueInStore: function (pref) {
+        return this.store.findRecord(this.valueField, pref);
+    }
+});
+Ext.define("TSFieldCopier", {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    defaults: { margin: 10 },
+    items: [
+        {xtype:'container', itemId:'selector_box', defaults: { margin: 10 }, layout: 'hbox', items: [
+            { xtype:'container', itemId: 'type_box' },
+            { xtype:'container', layout: 'vbox', items: [
+                { xtype:'container', itemId: 'from_box' },
+                { xtype:'container', itemId: 'from_msg' }
+            ]},
+            { xtype:'container', layout: 'vbox', items: [
+                { xtype:'container', itemId: 'to_box' },
+                { xtype:'container', itemId: 'to_msg' }
+            ]},
+            { xtype:'container', itemId:'button_box' }
+        ]},
+        {xtype:'container',itemId:'display_box'}
+    ],
+
+    integrationHeaders : {
+        name : "TSFieldCopier"
+    },
+                        
+    launch: function() {
+        this._addSelectors(this.down('#selector_box'));
+    },
+    
+    _addSelectors: function(container) {
+        var type_filter = Rally.data.wsapi.Filter.and([
+            { property: 'Creatable', value: true },
+            { property: 'ReadOnly', value: false },
+            { property: 'Restorable', value: true }
+        ]
+        );
+        
+        container.down('#type_box').add({
+            xtype:'tsrecordtypecombobox',
+            itemId: 'model_selector',
+            typeFilter: type_filter,
+            typeSorter: [
+                { property: 'Name', direction: 'Asc' },
+                { property: 'Ordinal', direction: 'Desc' }
+            ],
+            listeners: {
+                scope: this,
+                change:this._addFieldSelectors
+            }
+        });
+    
+        container.down('#button_box').add({
+            xtype:'rallybutton',
+            text: 'Copy All Values',
+            cls: 'primary',
+            listeners: {
+                scope: this,
+                click: this._copyValues
+            }
+        });
+    },
+    
+    _addFieldSelectors: function(cb) {
+        var from_container = this.down('#from_box'),
+              to_container = this.down('#to_box');
+        from_container.removeAll();
+        to_container.removeAll();
+                            
+        from_container.add({
+            xtype: 'rallyfieldcombobox',
+            model: cb.getRecord().get('TypePath'),
+            itemId: 'from_field_selector',
+            __typePath: cb.getRecord().get('TypePath'),
+            fieldLabel: 'Copy Values from:',
+            labelWidth: 100,
+            width: 235,
+            _isNotHidden: function(field) {
+                var isCollection = false;
+                if ( field.attributeDefinition ) {
+                    isCollection = ( field.attributeDefinition.AttributeType == "COLLECTION" );
+                }
+                return !field.hidden && !field.readOnly && !isCollection;
+            },
+            listeners: {
+                scope: this,
+                change: this._updateFromCount
+            }
+        });
+        
+        to_container.add({
+            xtype: 'rallyfieldcombobox',
+            model: cb.getRecord().get('TypePath'),
+            __typePath: cb.getRecord().get('TypePath'),
+            itemId: 'to_field_selector',
+            fieldLabel: 'to:',
+            labelWidth: 25,
+            width: 155,
+            _isNotHidden: function(field) {
+                var isCollection = false;
+                if ( field.attributeDefinition ) {
+                    isCollection = ( field.attributeDefinition.AttributeType == "COLLECTION" );
+                }
+                return !field.hidden && !field.readOnly && !isCollection;
+            },
+            listeners: {
+                scope: this,
+                change: this._updateToCount
+            }
+        });
+        
+    },
+    
+    _updateFromCount: function(combobox) {
+        var msg_box = this.down('#from_msg');
+        msg_box.removeAll();
+        
+        var model = combobox.__typePath;
+        var field = combobox.getRecord().get('value');
+
+        Ext.create('Rally.data.wsapi.Store',{
+            model:model,
+            filters: [{property: field, operator: '!=', value: '' }],
+            pageSize: 1,
+            limit: 1
+        }).load({
+            callback: function(results, operation, success) {
+                if ( !success ) {
+                    Ext.Msg.alert('Problem counting records', operation.error & operation.error.errors.join(''));
+                } else {
+                    msg_box.add({
+                        xtype:'container',
+                        html: Ext.String.format("{0} records found with a value in {1}",
+                            operation.resultSet.totalRecords,
+                            combobox.getRecord().get('name')
+                        )
+                    });
+                }
+            }
+        });
+    },
+    
+    _updateToCount: function(combobox) {
+        var msg_box = this.down('#to_msg');
+        msg_box.removeAll();
+        
+        var field   = this.down('#to_field_selector').getRecord().get('value');
+        var model   = this.down('#to_field_selector').__typePath;
+        var field_name = this.down('#to_field_selector').getRecord().get('name');
+
+        Ext.create('Rally.data.wsapi.Store',{
+            model:model,
+            filters: [{property: field, operator: '!=', value: '' }],
+            pageSize: 1,
+            limit: 1
+        }).load({
+            callback: function(results, operation, success) {
+                if ( !success ) {
+                    Ext.Msg.alert('Problem counting records', operation.error & operation.error.errors.join(''));
+                } else {
+                    msg_box.add({
+                        xtype:'container',
+                        html: Ext.String.format("{0} records found with a value in {1}",
+                            operation.resultSet.totalRecords,
+                            field_name
+                        )
+                    });
+                }
+            }
+        });
+    },
+    
+    _copyValues: function() {
+        var me = this;
+        this.setLoading('Loading items to change');
+        
+        var model      = this.down('#model_selector').getRecord().get('TypePath');
+        var from_field = this.down('#from_field_selector').getRecord().get('value');
+        var to_field   = this.down('#to_field_selector').getRecord().get('value');
+        
+        var config = {
+            model: model,
+            filters: [{property: from_field, operator: '!=', value: '' }],
+            limit: Infinity,
+            fetch: ['FormattedID','ObjectID','Name',from_field]
+        };
+        
+        this._loadWsapiRecords(config).then({
+            scope: this,
+            success: function(results) {
+                this.logger.log("Found ", results.length);
+                var number_of_items = results.length;
+                
+                var promises = [];
+                Ext.Array.each(results, function(result,idx){
+                    promises.push( function() {
+                        var counter = idx + 1;
+                        me.setLoading('Updating ' + counter + ' of ' + number_of_items);
+                        return me._setValue(result, from_field, to_field); 
+                    });
+                });
+                
+                this.setLoading(false);
+                if ( promises.length === 0 ) {
+                    Ext.Msg.alert('',"Nothing to Do");
+                    return;
+                }
+                
+                Deft.Chain.sequence(promises).then({
+                    success: function(results) {
+                        me.setLoading(false);
+                        Ext.Msg.alert('', 'Updated ' + results.length + ' records');
+                        me._updateToCount();
+                    },
+                    failure: function(msg) {
+                        me.setLoading(false);
+                        Ext.Msg.alert('Error on Save', msg);
+                    }
+                });
+            },
+            failure: function(msg) {
+                Ext.Msg.alert('Problem loading records', msg);
+            }
+        });
+    },
+    
+    _setValue: function(record, from_field, to_field) {
+        var deferred = Ext.create('Deft.Deferred');
+        record.set(to_field, record.get(from_field));
+        record.save({
+            callback: function(records, operation, success) {
+                console.log(operation);
+                
+                if ( !success ) {
+                    deferred.reject(operation.error && operation.error.errors.join(''));
+                } else {
+                    deferred.resolve(records);
+                }
+            }
+        });
+        return deferred.promise;
+    },
+    
+    _loadWsapiRecords: function(config){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        var default_config = {
+            model: 'Defect',
+            fetch: ['ObjectID']
+        };
+        this.logger.log("Starting load:",config.model);
+        Ext.create('Rally.data.wsapi.Store', Ext.Object.merge(default_config,config)).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    deferred.resolve(records);
+                } else {
+                    me.logger.log("Failed: ", operation);
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
+    },
+
+    _loadAStoreWithAPromise: function(model_name, model_fields){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        this.logger.log("Starting load:",model_name,model_fields);
+          
+        Ext.create('Rally.data.wsapi.Store', {
+            model: model_name,
+            fetch: model_fields
+        }).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    deferred.resolve(this);
+                } else {
+                    me.logger.log("Failed: ", operation);
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
+    },
+    
+    _displayGrid: function(store,field_names){
+        this.down('#display_box').add({
+            xtype: 'rallygrid',
+            store: store,
+            columnCfgs: field_names
+        });
+    },
+    
+    getOptions: function() {
+        return [
+            {
+                text: 'About...',
+                handler: this._launchInfo,
+                scope: this
+            }
+        ];
+    },
+    
+    _launchInfo: function() {
+        if ( this.about_dialog ) { this.about_dialog.destroy(); }
+        this.about_dialog = Ext.create('Rally.technicalservices.InfoLink',{});
+    },
+    
+    isExternal: function(){
+        return typeof(this.getAppId()) == 'undefined';
+    },
+    
+    //onSettingsUpdate:  Override
+    onSettingsUpdate: function (settings){
+        this.logger.log('onSettingsUpdate',settings);
+        // Ext.apply(this, settings);
+        this.launch();
+    }
+});
+
+            
+               Rally.launchApp('TSFieldCopier', {
+                   name: 'TS Field Copier'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
