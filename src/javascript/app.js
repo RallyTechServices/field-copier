@@ -116,16 +116,26 @@ Ext.define("TSFieldCopier", {
         
         var model = combobox.__typePath;
         var field = combobox.getRecord().get('value');
-
-        Ext.create('Rally.data.wsapi.Store',{
+        var field_defn = combobox.getRecord().get('fieldDefinition');
+        
+        //console.log(combobox.getRecord());
+        
+        var filters = Rally.data.wsapi.Filter.or([{property: field, operator: '!=', value: '' }]);
+        // for date fields, we want (<field> != "")
+        if ( field_defn && field_defn.type && field_defn.type.type == "date" ) {
+            var filters = Rally.data.wsapi.Filter.or([{property: field, operator: '!=', value: null }]);
+        }
+        var config = {
             model:model,
-            filters: [{property: field, operator: '!=', value: '' }],
+            filters: filters,
             pageSize: 1,
             limit: 1
-        }).load({
+        };
+        
+        Ext.create('Rally.data.wsapi.Store',config).load({
             callback: function(results, operation, success) {
                 if ( !success ) {
-                    Ext.Msg.alert('Problem counting records', operation.error & operation.error.errors.join(''));
+                    Ext.Msg.alert('Problem counting records', operation.error && operation.error.errors.join('') + "<br/>" + filters.toString());
                 } else {
                     msg_box.add({
                         xtype:'container',
@@ -142,20 +152,34 @@ Ext.define("TSFieldCopier", {
     _updateToCount: function(combobox) {
         var msg_box = this.down('#to_msg');
         msg_box.removeAll();
+        var combobox = this.down('#to_field_selector');
         
-        var field   = this.down('#to_field_selector').getRecord().get('value');
-        var model   = this.down('#to_field_selector').__typePath;
-        var field_name = this.down('#to_field_selector').getRecord().get('name');
+        var field   = combobox.getRecord().get('value');
+        var model   = combobox.__typePath;
+        var field_name = combobox.getRecord().get('name');
+        
+        var field_defn = combobox.getRecord().get('fieldDefinition');
+        
+        //console.log(combobox.getRecord());
+        
+        var filters = Rally.data.wsapi.Filter.or([{property: field, operator: '!=', value: '' }]);
+        // for date fields, we want (<field> != "")
+        if ( field_defn && field_defn.type && field_defn.type.type == "date" ) {
+            var filters = Rally.data.wsapi.Filter.or([{property: field, operator: '!=', value: null }]);
+        }
 
-        Ext.create('Rally.data.wsapi.Store',{
+        var config = {
             model:model,
-            filters: [{property: field, operator: '!=', value: '' }],
+            filters: filters,
             pageSize: 1,
             limit: 1
-        }).load({
+        };
+        
+        Ext.create('Rally.data.wsapi.Store',config).load({
             callback: function(results, operation, success) {
                 if ( !success ) {
-                    Ext.Msg.alert('Problem counting records', operation.error & operation.error.errors.join(''));
+                    Ext.Msg.alert('Problem counting records', operation.error && operation.error.errors.join(''));
+                    console.error('ERROR: ', operation);
                 } else {
                     msg_box.add({
                         xtype:'container',
@@ -176,10 +200,17 @@ Ext.define("TSFieldCopier", {
         var model      = this.down('#model_selector').getRecord().get('TypePath');
         var from_field = this.down('#from_field_selector').getRecord().get('value');
         var to_field   = this.down('#to_field_selector').getRecord().get('value');
+        var field_defn = this.down('#from_field_selector').getRecord().get('fieldDefinition');
+
+        var filters = Rally.data.wsapi.Filter.or([{property: from_field, operator: '!=', value: '' }]);
+        // for date fields, we want (<field> != "")
+        if ( field_defn && field_defn.type && field_defn.type.type == "date" ) {
+            var filters = Rally.data.wsapi.Filter.or([{property: from_field, operator: '!=', value: null }]);
+        }
         
         var config = {
             model: model,
-            filters: [{property: from_field, operator: '!=', value: '' }],
+            filters: filters,
             limit: Infinity,
             fetch: ['FormattedID','ObjectID','Name',from_field]
         };
